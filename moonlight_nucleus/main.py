@@ -16,7 +16,11 @@ config = {
         "password": os.environ["PGPASSWORD"],
         "app_db_name": "moonlight_nucleus",
     },
-    "telemetry": {},
+    "telemetry": {
+        "logs": {
+            "logLevel": "INFO",
+        }
+    },
     "env": {},
 }
 
@@ -27,7 +31,7 @@ DBOS(fastapi=app, config=config)
 @app.get("/greeting/{name}")
 @DBOS.workflow()
 def example_workflow(name: str) -> str:
-    DBOS.logger.warn(f"Received a greeting request for {name} ({DBOS.workflow_id}).")
+    DBOS.logger.info(f"Received a greeting request for {name} ({DBOS.workflow_id}).")
 
 
 @app.get("/status/{wfid}")
