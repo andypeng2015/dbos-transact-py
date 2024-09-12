@@ -79,7 +79,7 @@ from dbos.error import DBOSException, DBOSNonExistentWorkflowError
 from .application_database import ApplicationDatabase
 from .dbos_config import ConfigFile, load_config, set_env_vars
 from .logger import add_otlp_to_all_loggers, config_logger, dbos_logger, init_logger
-from .system_database import SystemDatabase, WorkflowStatusInternal
+from .system_database import SystemDatabase
 
 # Most DBOS functions are just any callable F, so decorators / wrappers work on F
 # There are cases where the parameters P and return value R should be separate
