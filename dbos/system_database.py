@@ -12,6 +12,7 @@ import sqlalchemy.dialects.postgresql as pg
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import create_async_engine
 
 import dbos.utils as utils
 from dbos.error import (
@@ -184,6 +185,9 @@ class SystemDatabase:
         self.engine = sa.create_engine(
             system_db_url, pool_size=20, max_overflow=5, pool_timeout=30
         )
+        self.async_engine = create_async_engine(
+            system_db_url, pool_size=20, max_overflow=5, pool_timeout=30
+        )
 
         # Run a schema migration for the system database
         migration_dir = os.path.join(
@@ -304,6 +308,46 @@ class SystemDatabase:
                     .values(recovery_attempts=reset_recovery_attempts)
                 )
                 c.execute(stmt)
+
+    async def get_workflow_status_async(
+        self, workflow_uuid: str
+    ) -> Optional[WorkflowStatusInternal]:
+        async with self.async_engine.begin() as c:
+            result = await c.execute(
+                sa.select(
+                    SystemSchema.workflow_status.c.status,
+                    SystemSchema.workflow_status.c.name,
+                    SystemSchema.workflow_status.c.request,
+                    SystemSchema.workflow_status.c.output,
+                    SystemSchema.workflow_status.c.error,
+                    SystemSchema.workflow_status.c.config_name,
+                    SystemSchema.workflow_status.c.class_name,
+                    SystemSchema.workflow_status.c.authenticated_user,
+                    SystemSchema.workflow_status.c.authenticated_roles,
+                    SystemSchema.workflow_status.c.assumed_role,
+                ).where(SystemSchema.workflow_status.c.workflow_uuid == workflow_uuid)
+            )
+            row = result.fetchone()
+            if row is None:
+                return None
+            status: WorkflowStatusInternal = {
+                "workflow_uuid": workflow_uuid,
+                "status": row[0],
+                "name": row[1],
+                "class_name": row[5],
+                "config_name": row[4],
+                "output": None,
+                "error": None,
+                "app_id": None,
+                "app_version": None,
+                "executor_id": None,
+                "request": row[2],
+                "recovery_attempts": row[3],
+                "authenticated_user": row[6],
+                "authenticated_roles": row[7],
+                "assumed_role": row[8],
+            }
+            return status
 
     def get_workflow_status(
         self, workflow_uuid: str
