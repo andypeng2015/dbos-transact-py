@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import atexit
 import json
 import os
@@ -178,6 +179,14 @@ class _DBOSRegistry:
                 )
         else:
             self.instance_info_map[fn] = inst
+
+
+def is_async_context() -> bool:
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
 
 
 class DBOS:
@@ -511,7 +520,7 @@ class DBOS:
         return _start_workflow(_get_dbos_instance(), func, *args, **kwargs)
 
     @classmethod
-    async def get_workflow_status_async(
+    async def _get_workflow_status_async(
         cls, workflow_id: str
     ) -> Optional[WorkflowStatus]:
         """Return the status of a workflow execution."""
@@ -535,7 +544,7 @@ class DBOS:
         )
 
     @classmethod
-    def get_workflow_status(cls, workflow_id: str) -> Optional[WorkflowStatus]:
+    def _get_workflow_status(cls, workflow_id: str) -> Optional[WorkflowStatus]:
         """Return the status of a workflow execution."""
         ctx = get_local_dbos_context()
         if ctx and ctx.is_within_workflow():
@@ -561,6 +570,14 @@ class DBOS:
                 if stat["authenticated_roles"] is not None
                 else None
             ),
+        )
+
+    @classmethod
+    def get_workflow_status(cls, workflow_id: str):
+        return (
+            cls._get_workflow_status_async(workflow_id)
+            if is_async_context()
+            else cls._get_workflow_status(workflow_id)
         )
 
     @classmethod

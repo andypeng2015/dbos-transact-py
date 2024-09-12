@@ -32,7 +32,7 @@ def example_workflow(name: str) -> str:
 
 @app.get("/status/{wfid}")
 async def status(wfid: str) -> WorkflowStatus | None:
-    status = await DBOS.get_workflow_status_async(wfid)
+    status = await DBOS.get_workflow_status(wfid)
     return status
 
 
