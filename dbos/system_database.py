@@ -19,6 +19,7 @@ from typing import (
 import psycopg
 import sqlalchemy as sa
 import sqlalchemy.dialects.postgresql as pg
+import sqlalchemy.ext.asyncio as asyncsa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.exc import DBAPIError
@@ -495,10 +496,10 @@ class SystemDatabase:
 
         return info
 
-    def update_workflow_inputs(
-        self, workflow_uuid: str, inputs: str, conn: Optional[sa.Connection] = None
-    ) -> None:
-        cmd = (
+    def _update_workflow_inputs_query(
+        self, workflow_uuid: str, inputs: str
+    ) -> sa.Insert:
+        return (
             pg.insert(SystemSchema.workflow_inputs)
             .values(
                 workflow_uuid=workflow_uuid,
@@ -506,16 +507,38 @@ class SystemDatabase:
             )
             .on_conflict_do_nothing()
         )
+
+    def _update_workflow_inputs_cleanup(self, workflow_uuid: str) -> None:
+        if workflow_uuid in self._temp_txn_wf_ids:
+            # Clean up the single-transaction tracking sets
+            self._exported_temp_txn_wf_status.discard(workflow_uuid)
+            self._temp_txn_wf_ids.discard(workflow_uuid)
+
+    async def update_workflow_inputs_async(
+        self,
+        workflow_uuid: str,
+        inputs: str,
+        conn: Optional[asyncsa.AsyncConnection] = None,
+    ) -> None:
+        cmd = self._update_workflow_inputs_query(workflow_uuid, inputs)
+        if conn is not None:
+            await conn.execute(cmd)
+        else:
+            with self.engine.begin() as c:
+                await c.execute(cmd)
+        self._update_workflow_inputs_cleanup(workflow_uuid)
+
+    def update_workflow_inputs(
+        self, workflow_uuid: str, inputs: str, conn: Optional[sa.Connection] = None
+    ) -> None:
+        cmd = self._update_workflow_inputs_query(workflow_uuid, inputs)
         if conn is not None:
             conn.execute(cmd)
         else:
             with self.engine.begin() as c:
                 c.execute(cmd)
 
-        if workflow_uuid in self._temp_txn_wf_ids:
-            # Clean up the single-transaction tracking sets
-            self._exported_temp_txn_wf_status.discard(workflow_uuid)
-            self._temp_txn_wf_ids.discard(workflow_uuid)
+        self._update_workflow_inputs_cleanup(workflow_uuid)
 
     def get_workflow_inputs(self, workflow_uuid: str) -> Optional[WorkflowInputs]:
         with self.engine.begin() as c:
