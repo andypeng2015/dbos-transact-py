@@ -520,7 +520,7 @@ class DBOS:
         return _start_workflow(_get_dbos_instance(), func, *args, **kwargs)
 
     @classmethod
-    async def _get_workflow_status_async(
+    async def get_workflow_status_async(
         cls, workflow_id: str
     ) -> Optional[WorkflowStatus]:
         """Return the status of a workflow execution."""
@@ -544,7 +544,7 @@ class DBOS:
         )
 
     @classmethod
-    def _get_workflow_status(cls, workflow_id: str) -> Optional[WorkflowStatus]:
+    def get_workflow_status(cls, workflow_id: str) -> Optional[WorkflowStatus]:
         """Return the status of a workflow execution."""
         ctx = get_local_dbos_context()
         if ctx and ctx.is_within_workflow():
@@ -570,14 +570,6 @@ class DBOS:
                 if stat["authenticated_roles"] is not None
                 else None
             ),
-        )
-
-    @classmethod
-    def get_workflow_status(cls, workflow_id: str):
-        return (
-            cls._get_workflow_status_async(workflow_id)
-            if is_async_context()
-            else cls._get_workflow_status(workflow_id)
         )
 
     @classmethod

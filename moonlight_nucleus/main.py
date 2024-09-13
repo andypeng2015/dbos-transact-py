@@ -3,10 +3,10 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
-from dbos import DBOS
+from dbos import DBOS, ConfigFile
 from dbos.dbos import WorkflowStatus
 
-config = {
+config: ConfigFile = {
     "name": "moonlight_nucleus",
     "language": "python",
     "database": {
@@ -31,17 +31,19 @@ DBOS(fastapi=app, config=config)
 @app.get("/greeting/{name}")
 @DBOS.workflow()
 def example_workflow(name: str) -> str:
+    msg = f"Received a greeting request for {name} ({DBOS.workflow_id})."
     DBOS.logger.info(f"Received a greeting request for {name} ({DBOS.workflow_id}).")
+    return msg
 
 
 @app.get("/status/{wfid}")
 async def status(wfid: str) -> WorkflowStatus | None:
-    status = await DBOS.get_workflow_status(wfid)
+    status = await DBOS.get_workflow_status_async(wfid)
     return status
 
 
 @app.get("/sync-status/{wfid}")
-def status(wfid: str) -> WorkflowStatus | None:
+def sync_status(wfid: str) -> WorkflowStatus | None:
     status = DBOS.get_workflow_status(wfid)
     return status
 
