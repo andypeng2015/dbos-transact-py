@@ -577,6 +577,7 @@ class DBOS:
         cls, workflow_id: str, existing_workflow: bool = True
     ) -> WorkflowHandle[R]:
         """Return a `WorkflowHandle` for a workflow execution."""
+        # NOTE: get_workflow_status is a class method, why do we need the instance here?
         dbos = _get_dbos_instance()
         if existing_workflow:
             stat = dbos.get_workflow_status(workflow_id)

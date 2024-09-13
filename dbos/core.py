@@ -183,6 +183,7 @@ def _execute_workflow(
     except DBOSWorkflowConflictIDError:
         # Retrieve the workflow handle and wait for the result.
         # Must use existing_workflow=False because workflow status might not be set yet for single transaction workflows.
+        # NOTE: dbos.retrieve_wf is a class method so we don't need the instance here
         wf_handle: "WorkflowHandle[R]" = dbos.retrieve_workflow(
             status["workflow_uuid"], existing_workflow=False
         )
