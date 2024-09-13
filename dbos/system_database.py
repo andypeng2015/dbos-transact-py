@@ -3,18 +3,7 @@ import os
 import threading
 import time
 from enum import Enum
-from typing import (
-    Any,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    TypedDict,
-    cast,
-)
+from typing import Any, Dict, List, Literal, Optional, Sequence, Set, TypedDict, cast
 
 import psycopg
 import sqlalchemy as sa
@@ -294,7 +283,7 @@ class SystemDatabase:
         replace: bool = True,
         in_recovery: bool = False,
         conn: Optional[asyncsa.AsyncConnection] = None,
-    ):
+    ) -> None:
         cmd = self._update_workflow_status_query(status, replace, in_recovery)
         if conn is not None:
             await conn.execute(cmd)
@@ -347,7 +336,7 @@ class SystemDatabase:
 
     def _get_workflow_status_query(
         self, workflow_uuid: str
-    ) -> sa.Select[Tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]]:
+    ) -> sa.Select[tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]]:
         return sa.select(
             SystemSchema.workflow_status.c.status,
             SystemSchema.workflow_status.c.name,
@@ -362,7 +351,7 @@ class SystemDatabase:
 
     def _get_workflow_status_result(
         self,
-        row: Optional[sa.Row[Tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]]],
+        row: Optional[sa.Row[tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]]],
         workflow_uuid: str,
     ) -> Optional[WorkflowStatusInternal]:
         if row is None:
@@ -544,7 +533,7 @@ class SystemDatabase:
         workflow_uuid: str,
         inputs: str,
         conn: Optional[asyncsa.AsyncConnection] = None,
-    ):
+    ) -> None:
         cmd = self._update_workflow_inputs_query(workflow_uuid, inputs)
         if conn is not None:
             await conn.execute(cmd)
