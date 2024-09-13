@@ -240,13 +240,12 @@ class SystemDatabase:
             dbos_logger.debug("Waiting for system buffers to be exported")
             time.sleep(1)
 
-    def update_workflow_status(
+    def _update_workflow_status_query(
         self,
         status: WorkflowStatusInternal,
         replace: bool = True,
         in_recovery: bool = False,
-        conn: Optional[sa.Connection] = None,
-    ) -> None:
+    ) -> sa.Insert:
         cmd = pg.insert(SystemSchema.workflow_status).values(
             workflow_uuid=status["workflow_uuid"],
             status=status["status"],
@@ -282,16 +281,42 @@ class SystemDatabase:
             )
         else:
             cmd = cmd.on_conflict_do_nothing()
+        return cmd
 
+    def _update_workflow_status_buffer(self, status: WorkflowStatusInternal) -> None:
+        # Record we have exported status for this single-transaction workflow
+        if status["workflow_uuid"] in self._temp_txn_wf_ids:
+            self._exported_temp_txn_wf_status.add(status["workflow_uuid"])
+
+    async def update_workflow_status_async(
+        self,
+        status: WorkflowStatusInternal,
+        replace: bool = True,
+        in_recovery: bool = False,
+        conn: Optional[asyncsa.AsyncConnection] = None,
+    ):
+        cmd = self._update_workflow_status_query(status, replace, in_recovery)
+        if conn is not None:
+            await conn.execute(cmd)
+        else:
+            async with self.async_engine.begin() as c:
+                await c.execute(cmd)
+        self._update_workflow_status_buffer(status)
+
+    def update_workflow_status(
+        self,
+        status: WorkflowStatusInternal,
+        replace: bool = True,
+        in_recovery: bool = False,
+        conn: Optional[sa.Connection] = None,
+    ) -> None:
+        cmd = self._update_workflow_status_query(status, replace, in_recovery)
         if conn is not None:
             conn.execute(cmd)
         else:
             with self.engine.begin() as c:
                 c.execute(cmd)
-
-        # Record we have exported status for this single-transaction workflow
-        if status["workflow_uuid"] in self._temp_txn_wf_ids:
-            self._exported_temp_txn_wf_status.add(status["workflow_uuid"])
+        self._update_workflow_status_buffer(status)
 
     def set_workflow_status(
         self,
@@ -519,7 +544,7 @@ class SystemDatabase:
         workflow_uuid: str,
         inputs: str,
         conn: Optional[asyncsa.AsyncConnection] = None,
-    ) -> None:
+    ):
         cmd = self._update_workflow_inputs_query(workflow_uuid, inputs)
         if conn is not None:
             await conn.execute(cmd)
