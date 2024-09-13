@@ -3,7 +3,18 @@ import os
 import threading
 import time
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Sequence, Set, TypedDict, cast
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    TypedDict,
+    cast,
+)
 
 import psycopg
 import sqlalchemy as sa
@@ -308,83 +319,61 @@ class SystemDatabase:
                 )
                 c.execute(stmt)
 
+    def _get_workflow_status_query(
+        self, workflow_uuid: str
+    ) -> sa.Select[Tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]]:
+        return sa.select(
+            SystemSchema.workflow_status.c.status,
+            SystemSchema.workflow_status.c.name,
+            SystemSchema.workflow_status.c.request,
+            SystemSchema.workflow_status.c.recovery_attempts,
+            SystemSchema.workflow_status.c.config_name,
+            SystemSchema.workflow_status.c.class_name,
+            SystemSchema.workflow_status.c.authenticated_user,
+            SystemSchema.workflow_status.c.authenticated_roles,
+            SystemSchema.workflow_status.c.assumed_role,
+        ).where(SystemSchema.workflow_status.c.workflow_uuid == workflow_uuid)
+
+    def _get_workflow_status_result(
+        self,
+        row: Optional[sa.Row[Tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]]],
+        workflow_uuid: str,
+    ):
+        if row is None:
+            return None
+        status: WorkflowStatusInternal = {
+            "workflow_uuid": workflow_uuid,
+            "status": row[0],
+            "name": row[1],
+            "class_name": row[5],
+            "config_name": row[4],
+            "output": None,
+            "error": None,
+            "app_id": None,
+            "app_version": None,
+            "executor_id": None,
+            "request": row[2],
+            "recovery_attempts": row[3],
+            "authenticated_user": row[6],
+            "authenticated_roles": row[7],
+            "assumed_role": row[8],
+        }
+        return status
+
     async def get_workflow_status_async(
         self, workflow_uuid: str
     ) -> Optional[WorkflowStatusInternal]:
         async with self.async_engine.begin() as c:
-            result = await c.execute(
-                sa.select(
-                    SystemSchema.workflow_status.c.status,
-                    SystemSchema.workflow_status.c.name,
-                    SystemSchema.workflow_status.c.request,
-                    SystemSchema.workflow_status.c.output,
-                    SystemSchema.workflow_status.c.error,
-                    SystemSchema.workflow_status.c.config_name,
-                    SystemSchema.workflow_status.c.class_name,
-                    SystemSchema.workflow_status.c.authenticated_user,
-                    SystemSchema.workflow_status.c.authenticated_roles,
-                    SystemSchema.workflow_status.c.assumed_role,
-                ).where(SystemSchema.workflow_status.c.workflow_uuid == workflow_uuid)
-            )
+            result = await c.execute(self._get_workflow_status_query(workflow_uuid))
             row = result.fetchone()
-            if row is None:
-                return None
-            status: WorkflowStatusInternal = {
-                "workflow_uuid": workflow_uuid,
-                "status": row[0],
-                "name": row[1],
-                "class_name": row[5],
-                "config_name": row[4],
-                "output": None,
-                "error": None,
-                "app_id": None,
-                "app_version": None,
-                "executor_id": None,
-                "request": row[2],
-                "recovery_attempts": row[3],
-                "authenticated_user": row[6],
-                "authenticated_roles": row[7],
-                "assumed_role": row[8],
-            }
-            return status
+            return self._get_workflow_status_result(row, workflow_uuid)
 
     def get_workflow_status(
         self, workflow_uuid: str
     ) -> Optional[WorkflowStatusInternal]:
         with self.engine.begin() as c:
-            row = c.execute(
-                sa.select(
-                    SystemSchema.workflow_status.c.status,
-                    SystemSchema.workflow_status.c.name,
-                    SystemSchema.workflow_status.c.request,
-                    SystemSchema.workflow_status.c.recovery_attempts,
-                    SystemSchema.workflow_status.c.config_name,
-                    SystemSchema.workflow_status.c.class_name,
-                    SystemSchema.workflow_status.c.authenticated_user,
-                    SystemSchema.workflow_status.c.authenticated_roles,
-                    SystemSchema.workflow_status.c.assumed_role,
-                ).where(SystemSchema.workflow_status.c.workflow_uuid == workflow_uuid)
-            ).fetchone()
-            if row is None:
-                return None
-            status: WorkflowStatusInternal = {
-                "workflow_uuid": workflow_uuid,
-                "status": row[0],
-                "name": row[1],
-                "class_name": row[5],
-                "config_name": row[4],
-                "output": None,
-                "error": None,
-                "app_id": None,
-                "app_version": None,
-                "executor_id": None,
-                "request": row[2],
-                "recovery_attempts": row[3],
-                "authenticated_user": row[6],
-                "authenticated_roles": row[7],
-                "assumed_role": row[8],
-            }
-            return status
+            row = c.execute(self._get_workflow_status_query(workflow_uuid)).fetchone()
+            return self._get_workflow_status_result(row, workflow_uuid)
 
     def get_workflow_status_within_wf(
         self, workflow_uuid: str, calling_wf: str, calling_wf_fn: int
