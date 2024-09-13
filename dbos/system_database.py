@@ -339,7 +339,7 @@ class SystemDatabase:
         self,
         row: Optional[sa.Row[Tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]]],
         workflow_uuid: str,
-    ):
+    ) -> Optional[WorkflowStatusInternal]:
         if row is None:
             return None
         status: WorkflowStatusInternal = {
@@ -524,7 +524,7 @@ class SystemDatabase:
         if conn is not None:
             await conn.execute(cmd)
         else:
-            with self.engine.begin() as c:
+            async with self.async_engine.begin() as c:
                 await c.execute(cmd)
         self._update_workflow_inputs_cleanup(workflow_uuid)
 
