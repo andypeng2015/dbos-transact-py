@@ -118,20 +118,19 @@ class _WorkflowHandlePolling(Generic[R]):
         return stat
 
 
-def _init_workflow(
-    dbos: "DBOS",
-    ctx: DBOSContext,
-    inputs: WorkflowInputs,
+def _init_workflow_make_status(
     wf_name: str,
+    ctx: DBOSContext,
     class_name: Optional[str],
     config_name: Optional[str],
-    temp_wf_type: Optional[str],
 ) -> WorkflowStatusInternal:
+
     wfid = (
         ctx.workflow_id
         if len(ctx.workflow_id) > 0
         else ctx.id_assigned_for_next_workflow
     )
+
     status: WorkflowStatusInternal = {
         "workflow_uuid": wfid,
         "status": "PENDING",
@@ -152,6 +151,21 @@ def _init_workflow(
         "assumed_role": ctx.assumed_role,
     }
 
+    return status
+
+
+def _init_workflow(
+    dbos: "DBOS",
+    ctx: DBOSContext,
+    inputs: WorkflowInputs,
+    wf_name: str,
+    class_name: Optional[str],
+    config_name: Optional[str],
+    temp_wf_type: Optional[str],
+) -> WorkflowStatusInternal:
+    status = _init_workflow_make_status(inputs, wf_name, ctx, class_name, config_name)
+    wfid = status["workflow_uuid"]
+
     # If we have a class name, the first arg is the instance and do not serialize
     if class_name is not None:
         inputs = {"args": inputs["args"][1:], "kwargs": inputs["kwargs"]}
@@ -161,6 +175,34 @@ def _init_workflow(
         # We also have to do this for single-step workflows because of the foreign key constraint on the operation outputs table
         dbos._sys_db.update_workflow_status(status, False, ctx.in_recovery)
         dbos._sys_db.update_workflow_inputs(wfid, utils.serialize(inputs))
+    else:
+        # Buffer the inputs for single-transaction workflows, but don't buffer the status
+        dbos._sys_db.buffer_workflow_inputs(wfid, utils.serialize(inputs))
+
+    return status
+
+
+async def _init_workflow_async(
+    dbos: "DBOS",
+    ctx: DBOSContext,
+    inputs: WorkflowInputs,
+    wf_name: str,
+    class_name: Optional[str],
+    config_name: Optional[str],
+    temp_wf_type: Optional[str],
+) -> WorkflowStatusInternal:
+    status = _init_workflow_make_status(inputs, wf_name, ctx, class_name, config_name)
+    wfid = status["workflow_uuid"]
+
+    # If we have a class name, the first arg is the instance and do not serialize
+    if class_name is not None:
+        inputs = {"args": inputs["args"][1:], "kwargs": inputs["kwargs"]}
+
+    if temp_wf_type != "transaction":
+        # Synchronously record the status and inputs for workflows and single-step workflows
+        # We also have to do this for single-step workflows because of the foreign key constraint on the operation outputs table
+        await dbos._sys_db.update_workflow_status(status, False, ctx.in_recovery)
+        await dbos._sys_db.update_workflow_inputs(wfid, utils.serialize(inputs))
     else:
         # Buffer the inputs for single-transaction workflows, but don't buffer the status
         dbos._sys_db.buffer_workflow_inputs(wfid, utils.serialize(inputs))
