@@ -163,7 +163,7 @@ def _init_workflow(
     config_name: Optional[str],
     temp_wf_type: Optional[str],
 ) -> WorkflowStatusInternal:
-    status = _init_workflow_make_status(inputs, wf_name, ctx, class_name, config_name)
+    status = _init_workflow_make_status(wf_name, ctx, class_name, config_name)
     wfid = status["workflow_uuid"]
 
     # If we have a class name, the first arg is the instance and do not serialize
@@ -191,7 +191,7 @@ async def _init_workflow_async(
     config_name: Optional[str],
     temp_wf_type: Optional[str],
 ) -> WorkflowStatusInternal:
-    status = _init_workflow_make_status(inputs, wf_name, ctx, class_name, config_name)
+    status = _init_workflow_make_status(wf_name, ctx, class_name, config_name)
     wfid = status["workflow_uuid"]
 
     # If we have a class name, the first arg is the instance and do not serialize
