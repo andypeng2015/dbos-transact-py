@@ -21,7 +21,6 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    cast,
 )
 
 from opentelemetry.trace import Span
@@ -41,6 +40,7 @@ from dbos.core import (
     _WorkflowHandlePolling,
 )
 from dbos.decorators import classproperty
+from dbos.queue import Queue, queue_thread
 from dbos.recovery import _recover_pending_workflows, _startup_recovery_thread
 from dbos.registrations import (
     DBOSClassInfo,
@@ -139,6 +139,7 @@ class _DBOSRegistry:
         self.workflow_info_map: dict[str, Workflow[..., Any]] = {}
         self.class_info_map: dict[str, type] = {}
         self.instance_info_map: dict[str, object] = {}
+        self.queue_info_map: dict[str, Queue] = {}
         self.pollers: list[_RegisteredJob] = []
         self.dbos: Optional[DBOS] = None
         self.config: Optional[ConfigFile] = None
@@ -365,6 +366,11 @@ class DBOS:
         # Start flush workflow buffers thread
         self._executor.submit(self._sys_db.flush_workflow_buffers)
 
+        # Start the queue thread
+        evt = threading.Event()
+        self.stop_events.append(evt)
+        self._executor.submit(queue_thread, evt, self)
+
         # Grab any pollers that were deferred and start them
         for evt, func, args, kwargs in self._registry.pollers:
             self.stop_events.append(evt)
@@ -497,13 +503,18 @@ class DBOS:
 
     @classmethod
     def kafka_consumer(
-        cls, config: dict[str, Any], topics: list[str]
+        cls,
+        config: dict[str, Any],
+        topics: list[str],
+        in_order: bool = False,
     ) -> Callable[[KafkaConsumerWorkflow], KafkaConsumerWorkflow]:
         """Decorate a function to be used as a Kafka consumer."""
         try:
             from dbos.kafka import kafka_consumer
 
-            return kafka_consumer(_get_or_create_dbos_registry(), config, topics)
+            return kafka_consumer(
+                _get_or_create_dbos_registry(), config, topics, in_order
+            )
         except ModuleNotFoundError as e:
             raise DBOSException(
                 f"{e.name} dependency not found. Please install {e.name} via your package manager."
@@ -517,7 +528,7 @@ class DBOS:
         **kwargs: P.kwargs,
     ) -> WorkflowHandle[R]:
         """Invoke a workflow function in the background, returning a handle to the ongoing execution."""
-        return _start_workflow(_get_dbos_instance(), func, *args, **kwargs)
+        return _start_workflow(_get_dbos_instance(), func, None, True, *args, **kwargs)
 
     @classmethod
     async def get_workflow_status_async(

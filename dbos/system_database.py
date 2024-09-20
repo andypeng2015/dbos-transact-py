@@ -34,10 +34,11 @@ class WorkflowStatusString(Enum):
     ERROR = "ERROR"
     RETRIES_EXCEEDED = "RETRIES_EXCEEDED"
     CANCELLED = "CANCELLED"
+    ENQUEUED = "ENQUEUED"
 
 
 WorkflowStatuses = Literal[
-    "PENDING", "SUCCESS", "ERROR", "RETRIES_EXCEEDED", "CANCELLED"
+    "PENDING", "SUCCESS", "ERROR", "RETRIES_EXCEEDED", "CANCELLED", "ENQUEUED"
 ]
 
 
@@ -62,6 +63,7 @@ class WorkflowStatusInternal(TypedDict):
     authenticated_user: Optional[str]
     assumed_role: Optional[str]
     authenticated_roles: Optional[str]  # JSON list of roles.
+    queue_name: Optional[str]
 
 
 class RecordedResult(TypedDict):
@@ -250,6 +252,7 @@ class SystemDatabase:
             authenticated_user=status["authenticated_user"],
             authenticated_roles=status["authenticated_roles"],
             assumed_role=status["assumed_role"],
+            queue_name=status["queue_name"],
         )
         if replace:
             cmd = cmd.on_conflict_do_update(
@@ -347,6 +350,7 @@ class SystemDatabase:
             SystemSchema.workflow_status.c.authenticated_user,
             SystemSchema.workflow_status.c.authenticated_roles,
             SystemSchema.workflow_status.c.assumed_role,
+            SystemSchema.workflow_status.c.queue_name,
         ).where(SystemSchema.workflow_status.c.workflow_uuid == workflow_uuid)
 
     def _get_workflow_status_result(
@@ -372,6 +376,7 @@ class SystemDatabase:
             "authenticated_user": row[6],
             "authenticated_roles": row[7],
             "assumed_role": row[8],
+            "queue_name": row[9],
         }
         return status
 
@@ -426,6 +431,7 @@ class SystemDatabase:
                     SystemSchema.workflow_status.c.authenticated_user,
                     SystemSchema.workflow_status.c.authenticated_roles,
                     SystemSchema.workflow_status.c.assumed_role,
+                    SystemSchema.workflow_status.c.queue_name,
                 ).where(SystemSchema.workflow_status.c.workflow_uuid == workflow_uuid)
             ).fetchone()
             if row is None:
@@ -446,6 +452,7 @@ class SystemDatabase:
                 "authenticated_user": row[7],
                 "authenticated_roles": row[8],
                 "assumed_role": row[9],
+                "queue_name": row[10],
             }
             return status
 
@@ -1079,3 +1086,50 @@ class SystemDatabase:
             len(self._workflow_status_buffer) == 0
             and len(self._workflow_inputs_buffer) == 0
         )
+
+    def enqueue(self, workflow_id: str, queue_name: str) -> None:
+        with self.engine.begin() as c:
+            c.execute(
+                pg.insert(SystemSchema.job_queue)
+                .values(
+                    workflow_uuid=workflow_id,
+                    queue_name=queue_name,
+                )
+                .on_conflict_do_nothing()
+            )
+
+    def start_queued_workflows(
+        self, queue_name: str, concurrency: Optional[int]
+    ) -> List[str]:
+        with self.engine.begin() as c:
+            query = sa.select(SystemSchema.job_queue.c.workflow_uuid).where(
+                SystemSchema.job_queue.c.queue_name == queue_name
+            )
+            if concurrency is not None:
+                query = query.order_by(
+                    SystemSchema.job_queue.c.created_at_epoch_ms.asc()
+                ).limit(concurrency)
+            rows = c.execute(query).fetchall()
+            dequeued_ids: List[str] = [row[0] for row in rows]
+            ret_ids = []
+            for id in dequeued_ids:
+                result = c.execute(
+                    SystemSchema.workflow_status.update()
+                    .where(SystemSchema.workflow_status.c.workflow_uuid == id)
+                    .where(
+                        SystemSchema.workflow_status.c.status
+                        == WorkflowStatusString.ENQUEUED.value
+                    )
+                    .values(status=WorkflowStatusString.PENDING.value)
+                )
+                if result.rowcount > 0:
+                    ret_ids.append(id)
+            return ret_ids
+
+    def remove_from_queue(self, workflow_id: str) -> None:
+        with self.engine.begin() as c:
+            c.execute(
+                sa.delete(SystemSchema.job_queue).where(
+                    SystemSchema.job_queue.c.workflow_uuid == workflow_id
+                )
+            )
