@@ -524,7 +524,7 @@ class DBOS:
         cls, workflow_id: str
     ) -> Optional[WorkflowStatus]:
         """Return the status of a workflow execution."""
-        stat = await _get_dbos_instance().sys_db.get_workflow_status_async(workflow_id)
+        stat = await _get_dbos_instance()._sys_db.get_workflow_status_async(workflow_id)
         if stat is None:
             return None
         return WorkflowStatus(

@@ -201,8 +201,8 @@ async def _init_workflow_async(
     if temp_wf_type != "transaction":
         # Synchronously record the status and inputs for workflows and single-step workflows
         # We also have to do this for single-step workflows because of the foreign key constraint on the operation outputs table
-        await dbos._sys_db.update_workflow_status(status, False, ctx.in_recovery)
-        await dbos._sys_db.update_workflow_inputs(wfid, utils.serialize(inputs))
+        await dbos._sys_db.update_workflow_status_async(status, False, ctx.in_recovery)
+        await dbos._sys_db.update_workflow_inputs_async(wfid, utils.serialize(inputs))
     else:
         # Buffer the inputs for single-transaction workflows, but don't buffer the status
         dbos._sys_db.buffer_workflow_inputs(wfid, utils.serialize(inputs))
@@ -341,11 +341,11 @@ def _workflow_wrapper(dbosreg: "_DBOSRegistry", func: F) -> F:
             "kwargs": kwargs,
         }
         ctx = get_local_dbos_context()
-        enterCtxMgr = (
+        enterWorkflowCtxMgr = (
             EnterDBOSChildWorkflow if ctx and ctx.is_workflow() else EnterDBOSWorkflow
         )
-        with enterCtxMgr(attributes), DBOSAssumeRole(rr):
-            ctx = assert_current_dbos_context()
+        with enterWorkflowCtxMgr(attributes), DBOSAssumeRole(rr):
+            ctx = assert_current_dbos_context()  # Now the child ctx
             status = _init_workflow(
                 dbos,
                 ctx,
